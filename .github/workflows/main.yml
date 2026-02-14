@@ -1,37 +1,29 @@
-name: Build Kernel (Odin 5.4 + KernelSU)
+name: Build Kernel (Odin 5.4)
 
 on:
   workflow_dispatch:
     inputs:
       defconfig:
-        description: "Defconfig name under arch/arm64/configs (e.g. odin_defconfig)"
+        description: "Defconfig under arch/arm64/configs (e.g. odin_defconfig)"
         required: true
         default: "odin_defconfig"
-      lto:
-        description: "Enable LTO? (true/false)"
-        required: false
-        default: "true"
 
 jobs:
   build:
     runs-on: ubuntu-22.04
 
     env:
-      # ====== Build identity (optional) ======
       KBUILD_BUILD_USER: builder
       KBUILD_BUILD_HOST: builder-vendor-48059-417397120388620288
       KBUILD_BUILD_TIMESTAMP: "Fri Jul 26 11:35:31 UTC 2023"
 
-      # ====== Paths in your repo ======
       CLANG_DIR: scripts/tools/clang-r383902b1
       ANYKERNEL_DIR: scripts/tools/AnyKernel3
 
-      # ====== Kernel build basics ======
       OUT_DIR: out
       ARCH: arm64
       SUBARCH: arm64
 
-      # ====== Toolchain settings (match your args) ======
       CC: clang
       LD: ld.lld
       AR: llvm-ar
@@ -44,13 +36,13 @@ jobs:
       HOSTCXX: clang++
       HOSTAR: llvm-ar
       HOSTLD: ld.lld
+
       CLANG_TRIPLE: aarch64-linux-gnu-
       CROSS_COMPILE: aarch64-linux-gnu-
       CROSS_COMPILE_COMPAT: arm-linux-gnueabi-
       LLVM: "1"
       LLVM_IAS: "1"
 
-      # ccache
       CCACHE_COMPRESS: "true"
       CCACHE_COMPRESSLEVEL: "6"
       CCACHE_MAXSIZE: "3G"
@@ -75,17 +67,16 @@ jobs:
             python-is-python3 \
             gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
 
-      - name: Setup ccache
+      - name: Cache ccache
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.ccache
+          path: ~/.ccache
           key: ${{ runner.os }}-ccache-${{ github.ref_name }}-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-ccache-${{ github.ref_name }}-
             ${{ runner.os }}-ccache-
 
-      - name: Export PATH (clang + cross tools)
+      - name: Toolchain sanity check
         run: |
           echo "${GITHUB_WORKSPACE}/${CLANG_DIR}/bin" >> $GITHUB_PATH
           echo "/usr/lib/ccache" >> $GITHUB_PATH
@@ -95,20 +86,12 @@ jobs:
           arm-linux-gnueabi-gcc --version
           ccache --version
 
-      - name: Configure kernel (defconfig)
+      - name: Configure (defconfig)
         run: |
           mkdir -p "${OUT_DIR}"
           make -j"$(nproc)" O="${OUT_DIR}" ARCH="${ARCH}" SUBARCH="${SUBARCH}" "${{ inputs.defconfig }}"
 
-      - name: Optional: toggle LTO
-        if: ${{ inputs.lto == 'false' }}
-        run: |
-          # Try to disable common LTO configs safely (won't fail if not present)
-          "${GITHUB_WORKSPACE}/scripts/config" --file "${OUT_DIR}/.config" \
-            -d LTO_CLANG -d LTO -d THINLTO || true
-          make -j"$(nproc)" O="${OUT_DIR}" ARCH="${ARCH}" SUBARCH="${SUBARCH}" olddefconfig
-
-      - name: Build kernel
+      - name: Build
         run: |
           export PATH="${GITHUB_WORKSPACE}/${CLANG_DIR}/bin:$PATH"
           make -j"$(nproc)" \
@@ -120,13 +103,8 @@ jobs:
             LLVM="${LLVM}" LLVM_IAS="${LLVM_IAS}" \
             CCACHE=ccache
 
-      - name: Collect outputs
+      - name: Find kernel image
         run: |
-          echo "Listing boot outputs:"
-          ls -lah "${OUT_DIR}/arch/arm64/boot" || true
-          ls -lah "${OUT_DIR}/arch/arm64/boot/dts" || true
-
-          # Prefer commonly used Android kernel image names
           IMG=""
           for f in \
             "${OUT_DIR}/arch/arm64/boot/Image.gz-dtb" \
@@ -134,51 +112,31 @@ jobs:
             "${OUT_DIR}/arch/arm64/boot/Image"; do
             if [ -f "$f" ]; then IMG="$f"; break; fi
           done
-
           if [ -z "$IMG" ]; then
-            echo "ERROR: Kernel image not found in out/arch/arm64/boot"
+            echo "ERROR: Kernel image not found"
+            ls -lah "${OUT_DIR}/arch/arm64/boot" || true
             exit 1
           fi
-
           echo "KERNEL_IMAGE=$IMG" >> $GITHUB_ENV
-          echo "Found kernel image: $IMG"
+          echo "Found: $IMG"
 
-      - name: Package with AnyKernel3
+      - name: Package AnyKernel3 zip
         run: |
           AK="${GITHUB_WORKSPACE}/${ANYKERNEL_DIR}"
-          if [ ! -d "$AK" ]; then
-            echo "ERROR: AnyKernel3 dir not found: $AK"
-            exit 1
-          fi
+          test -d "$AK"
 
-          # Clean old zips / old image
           rm -f "$AK"/*.zip || true
           rm -f "$AK"/Image* || true
-
-          # Copy image into AnyKernel3
           cp -v "${KERNEL_IMAGE}" "$AK/"
 
-          # Some AK3 scripts expect a specific filename; optionally normalize:
-          # If you know your AK3 expects 'Image.gz-dtb', uncomment below:
-          # (cd "$AK" && ls Image* && mv -f Image* Image.gz-dtb)
-
-          # Build zip
-          ZIP_NAME="KernelSU-${{ github.ref_name }}-${{ github.run_number }}.zip"
+          ZIP_NAME="KernelSU-${GITHUB_REF_NAME}-${GITHUB_RUN_NUMBER}.zip"
           (cd "$AK" && zip -r9 "../$ZIP_NAME" ./*)
 
           echo "ZIP_PATH=${GITHUB_WORKSPACE}/scripts/tools/$ZIP_NAME" >> $GITHUB_ENV
           ls -lah "${GITHUB_WORKSPACE}/scripts/tools/$ZIP_NAME"
 
-      - name: Upload artifact (AnyKernel3 zip)
+      - name: Upload AnyKernel3 zip
         uses: actions/upload-artifact@v4
         with:
           name: AnyKernel3-zip
           path: ${{ env.ZIP_PATH }}
-
-      - name: Upload artifact (raw Image outputs)
-        uses: actions/upload-artifact@v4
-        with:
-          name: kernel-raw-out
-          path: |
-            out/arch/arm64/boot/Image*
-            out/.config
