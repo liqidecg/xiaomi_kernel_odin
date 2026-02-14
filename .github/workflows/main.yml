@@ -96,7 +96,7 @@ jobs:
           mkdir -p "${OUT_DIR}"
           make -j"$(nproc)" O="${OUT_DIR}" ARCH="${ARCH}" SUBARCH="${SUBARCH}" "${{ inputs.defconfig }}"
 
-      - name: Optional: disable LTO
+      - name: "Optional: disable LTO"
         if: ${{ inputs.lto == 'false' }}
         run: |
           if [ -f "${GITHUB_WORKSPACE}/scripts/config" ]; then
