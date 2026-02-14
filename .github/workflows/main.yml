@@ -17,21 +17,17 @@ jobs:
     runs-on: ubuntu-22.04
 
     env:
-      # Build identity
       KBUILD_BUILD_USER: builder
       KBUILD_BUILD_HOST: builder-vendor-48059-417397120388620288
       KBUILD_BUILD_TIMESTAMP: "Fri Jul 26 11:35:31 UTC 2023"
 
-      # Repo tool paths
       CLANG_DIR: scripts/tools/clang-r383902b1
       ANYKERNEL_DIR: scripts/tools/AnyKernel3
 
-      # Kernel build
       OUT_DIR: out
       ARCH: arm64
       SUBARCH: arm64
 
-      # Toolchain settings (match your args)
       CC: clang
       LD: ld.lld
       AR: llvm-ar
@@ -44,13 +40,13 @@ jobs:
       HOSTCXX: clang++
       HOSTAR: llvm-ar
       HOSTLD: ld.lld
+
       CLANG_TRIPLE: aarch64-linux-gnu-
       CROSS_COMPILE: aarch64-linux-gnu-
       CROSS_COMPILE_COMPAT: arm-linux-gnueabi-
       LLVM: "1"
       LLVM_IAS: "1"
 
-      # ccache
       CCACHE_COMPRESS: "true"
       CCACHE_COMPRESSLEVEL: "6"
       CCACHE_MAXSIZE: "3G"
@@ -86,12 +82,11 @@ jobs:
 
       - name: Export PATH (clang + ccache) and sanity check
         run: |
-          echo "${GITHUB_WORKSPACE}/${CLANG_DIR}/bin" >> $GITHUB_PATH
-          echo "/usr/lib/ccache" >> $GITHUB_PATH
+          echo "${GITHUB_WORKSPACE}/${CLANG_DIR}/bin" >> "$GITHUB_PATH"
+          echo "/usr/lib/ccache" >> "$GITHUB_PATH"
 
           clang --version
           ld.lld --version
-          llvm-ar --version || true
           aarch64-linux-gnu-gcc --version
           arm-linux-gnueabi-gcc --version
           ccache --version
@@ -104,7 +99,6 @@ jobs:
       - name: Optional: disable LTO
         if: ${{ inputs.lto == 'false' }}
         run: |
-          # Some trees include scripts/config; if not present, just skip safely.
           if [ -f "${GITHUB_WORKSPACE}/scripts/config" ]; then
             chmod +x "${GITHUB_WORKSPACE}/scripts/config" || true
             "${GITHUB_WORKSPACE}/scripts/config" --file "${OUT_DIR}/.config" \
@@ -137,7 +131,10 @@ jobs:
             "${OUT_DIR}/arch/arm64/boot/Image.gz-dtb" \
             "${OUT_DIR}/arch/arm64/boot/Image.gz" \
             "${OUT_DIR}/arch/arm64/boot/Image"; do
-            if [ -f "$f" ]; then IMG="$f"; break; fi
+            if [ -f "$f" ]; then
+              IMG="$f"
+              break
+            fi
           done
 
           if [ -z "$IMG" ]; then
@@ -145,7 +142,7 @@ jobs:
             exit 1
           fi
 
-          echo "KERNEL_IMAGE=$IMG" >> $GITHUB_ENV
+          echo "KERNEL_IMAGE=$IMG" >> "$GITHUB_ENV"
           echo "Found kernel image: $IMG"
 
       - name: Package AnyKernel3 zip
@@ -156,21 +153,18 @@ jobs:
             exit 1
           fi
 
-          # Clean old outputs
           rm -f "$AK"/*.zip || true
           rm -f "$AK"/Image* || true
 
-          # Copy image into AnyKernel3
           cp -v "${KERNEL_IMAGE}" "$AK/"
 
-          # If your anykernel.sh expects a fixed filename, normalize here.
-          # Example (uncomment if needed):
+          # If your anykernel.sh expects a fixed name, normalize here (uncomment & adjust):
           # (cd "$AK" && for f in Image*; do [ "$f" = "Image.gz-dtb" ] || mv -f "$f" "Image.gz-dtb"; done)
 
           ZIP_NAME="KernelSU-${GITHUB_REF_NAME}-${GITHUB_RUN_NUMBER}.zip"
           (cd "$AK" && zip -r9 "../$ZIP_NAME" ./*)
 
-          echo "ZIP_PATH=${GITHUB_WORKSPACE}/scripts/tools/$ZIP_NAME" >> $GITHUB_ENV
+          echo "ZIP_PATH=${GITHUB_WORKSPACE}/scripts/tools/$ZIP_NAME" >> "$GITHUB_ENV"
           ls -lah "${GITHUB_WORKSPACE}/scripts/tools/$ZIP_NAME"
 
       - name: Upload AnyKernel3 zip
