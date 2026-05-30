@@ -17,9 +17,24 @@
 #include <linux/syscalls.h>
 #include <linux/pagemap.h>
 #include <linux/compat.h>
+#ifdef CONFIG_KSU_SUSFS
+#include <linux/susfs_def.h>
+#include <linux/version.h>
+#endif
 
 #include <linux/uaccess.h>
 #include <asm/unistd.h>
+
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+#include "mount.h"
+#endif
+
+#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+extern void susfs_sus_kstat_spoof_generic_fillattr(struct inode *inode, struct kstat *stat);
+#endif
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+extern int susfs_get_non_sus_mnt_id_from_mnt(struct mount *orig_mnt);
+#endif
 
 /**
  * generic_fillattr - Fill in the basic attributes from the inode struct
@@ -45,6 +60,9 @@ void generic_fillattr(struct inode *inode, struct kstat *stat)
 	stat->ctime = inode->i_ctime;
 	stat->blksize = i_blocksize(inode);
 	stat->blocks = inode->i_blocks;
+#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+	susfs_sus_kstat_spoof_generic_fillattr(inode, stat);
+#endif
 }
 EXPORT_SYMBOL(generic_fillattr);
 
@@ -78,8 +96,18 @@ int vfs_getattr_nosec(const struct path *path, struct kstat *stat,
 		stat->attributes |= STATX_ATTR_AUTOMOUNT;
 
 	if (inode->i_op->getattr)
+#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+	{
+		int err = inode->i_op->getattr(path, stat, request_mask,
+					    query_flags);
+		if (!err)
+			susfs_sus_kstat_spoof_generic_fillattr(inode, stat);
+		return err;
+	}
+#else
 		return inode->i_op->getattr(path, stat, request_mask,
 					    query_flags);
+#endif
 
 	generic_fillattr(inode, stat);
 	return 0;
@@ -119,6 +147,11 @@ int vfs_getattr(const struct path *path, struct kstat *stat,
 }
 EXPORT_SYMBOL_NS(vfs_getattr, ANDROID_GKI_VFS_EXPORT_ONLY);
 
+#ifdef CONFIG_KSU_SUSFS
+extern struct static_key_true ksu_is_init_rc_hook_enabled;
+extern void ksu_handle_vfs_fstat(int fd, loff_t *kstat_size_ptr);
+#endif // #ifdef CONFIG_KSU_SUSFS
+
 /**
  * vfs_statx_fd - Get the enhanced basic attributes by file descriptor
  * @fd: The file descriptor referring to the file of interest
@@ -144,11 +177,25 @@ int vfs_statx_fd(unsigned int fd, struct kstat *stat,
 	if (f.file) {
 		error = vfs_getattr(&f.file->f_path, stat,
 				    request_mask, query_flags);
+#ifdef CONFIG_KSU_SUSFS
+		if (!error && static_branch_unlikely(&ksu_is_init_rc_hook_enabled))
+			ksu_handle_vfs_fstat(fd, &stat->size);
+#endif // #ifdef CONFIG_KSU_SUSFS
 		fdput(f);
 	}
 	return error;
 }
 EXPORT_SYMBOL(vfs_statx_fd);
+
+#ifdef CONFIG_KSU_SUSFS
+extern struct static_key_true ksu_su_compat_enabled;
+extern bool __ksu_is_allow_uid_for_current(uid_t uid);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
+extern int ksu_handle_stat(int *dfd, struct filename **filename, int *flags);
+#else
+extern int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags);
+#endif
+#endif
 
 /**
  * vfs_statx - Get basic and extra attributes by filename
@@ -172,6 +219,18 @@ int vfs_statx(int dfd, const char __user *filename, int flags,
 	int error = -EINVAL;
 	unsigned int lookup_flags = LOOKUP_FOLLOW | LOOKUP_AUTOMOUNT;
 
+#ifdef CONFIG_KSU_SUSFS
+	if (likely(susfs_is_current_proc_umounted()))
+		goto orig_flow;
+
+	if (static_branch_likely(&ksu_su_compat_enabled)) {
+		if (unlikely(__ksu_is_allow_uid_for_current(current_uid().val)))
+			ksu_handle_stat(&dfd, &filename, &flags);
+	}
+
+orig_flow:
+#endif
+
 	if ((flags & ~(AT_SYMLINK_NOFOLLOW | AT_NO_AUTOMOUNT |
 		       AT_EMPTY_PATH | KSTAT_QUERY_FLAGS)) != 0)
 		return -EINVAL;
@@ -189,6 +248,16 @@ retry:
 		goto out;
 
 	error = vfs_getattr(&path, stat, request_mask, flags);
+#if defined(CONFIG_KSU_SUSFS_SUS_MOUNT) && defined(STATX_MNT_ID)
+	if (!error) {
+		if (real_mount(path.mnt)->mnt_id >= DEFAULT_KSU_MNT_ID &&
+		    likely(susfs_is_current_proc_umounted_app()))
+			stat->mnt_id = susfs_get_non_sus_mnt_id_from_mnt(real_mount(path.mnt));
+		else
+			stat->mnt_id = real_mount(path.mnt)->mnt_id;
+		stat->result_mask |= STATX_MNT_ID;
+	}
+#endif // #if defined(CONFIG_KSU_SUSFS_SUS_MOUNT) && defined(STATX_MNT_ID)
 	path_put(&path);
 	if (retry_estale(error, lookup_flags)) {
 		lookup_flags |= LOOKUP_REVAL;
