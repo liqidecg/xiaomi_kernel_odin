@@ -1,33 +1,13 @@
-#ifndef REKERNEL_H
-#define REKERNEL_H
+#ifndef __RE_KERNEL_H
+#define __RE_KERNEL_H
 
-#define CLEAN_UP_ASYNC_BINDER
+#include <uapi/linux/android/rekernel.h>
 
-#define MIN_USERAPP_UID                 (10000)
-#define MAX_SYSTEM_UID                  (2000)
-#define SYSTEM_APP_UID                  (1000)
-#define RESERVE_ORDER					17
-#define WARN_AHEAD_SPACE				(1 << RESERVE_ORDER)
-#define INTERFACETOKEN_BUFF_SIZE        (140)
-#define PARCEL_OFFSET                   (16) /* sync with the writeInterfaceToken */
-#define LINE_ERROR                      (-1)
-#define LINE_SUCCESS                    (0)
+#define NETLINK_REKERNEL_MAX	26
+#define NETLINK_REKERNEL_MIN	22
+#define USER_PORT				100
+#define PACKET_SIZE				256
 
-/* command types from userspace */
-enum rekernel_cmd_type {
-	REKERNEL_CMD_REMOVE_PROC = 1,
-	REKERNEL_CMD_MONITOR_NET = 2,
-};
+extern struct net init_net;
 
-struct rekernel_monitor_net_args {
-	int uid;
-};
-
-struct rekernel_cmd {
-	int type;
-	union {
-		struct rekernel_monitor_net_args monitor_net;
-	};
-};
-
-#endif
+#endif /* __RE_KERNEL_H */
