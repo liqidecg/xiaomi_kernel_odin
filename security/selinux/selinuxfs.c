@@ -240,25 +240,9 @@ static int sel_open_handle_status(struct inode *inode, struct file *filp)
 #ifdef CONFIG_KSU_SUSFS
 static int my_sel_open_handle_status(struct inode *inode, struct file *filp)
 {
-	void *data;
-	int ret;
-
-	if (likely(current_uid().val >= 10000 && ksu_selinux_hide_enabled)) {
-		mutex_lock(&selinux_state.status_lock);
-		data = fake_status;
-		mutex_unlock(&selinux_state.status_lock);
-		if (data) {
-			filp->private_data = data;
-			return 0;
-		}
-	}
-
-	ret = sel_open_handle_status(inode, filp);
-	if (static_branch_unlikely(&fake_status_initialize_key) && !ret && !fake_status)
-		initialize_fake_status();
-	return ret;
+    return sel_open_handle_status(inode, filp);
 }
-#endif // #ifdef CONFIG_KSU_SUSFS
+#endif
 
 static ssize_t sel_read_handle_status(struct file *filp, char __user *buf,
 				      size_t count, loff_t *ppos)
