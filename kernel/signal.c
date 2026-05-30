@@ -15,6 +15,9 @@
 #include <linux/export.h>
 #include <linux/init.h>
 #include <linux/rekernel.h>
+#include <linux/netlink.h>
+#include <net/netlink.h>
+#include <net/sock.h>
 #include <linux/sched/mm.h>
 #include <linux/sched/user.h>
 #include <linux/sched/debug.h>
