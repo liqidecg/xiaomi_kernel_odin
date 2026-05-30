@@ -1,7 +1,7 @@
 #ifndef __RE_KERNEL_H
 #define __RE_KERNEL_H
 
-#include <uapi/linux/android/rekernel.h>
+#include "rekernel.h"
 
 #define NETLINK_REKERNEL_MAX	26
 #define NETLINK_REKERNEL_MIN	22
