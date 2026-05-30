@@ -6,11 +6,14 @@
 #include <net/netlink.h>
 #include <net/sock.h>
 
-#define NETLINK_REKERNEL_MAX    26
-#define NETLINK_REKERNEL_MIN    22
+#define NETLINK_REKERNEL_MAX        26
+#define NETLINK_REKERNEL_MIN        22
 
-#define REKERNEL_USER_PORT      100
-#define REKERNEL_PACKET_SIZE    256
+#define REKERNEL_USER_PORT          100
+#define REKERNEL_PACKET_SIZE        256
+
+#define REKERNEL_MAX_SYSTEM_UID     2000
+#define REKERNEL_MIN_USERAPP_UID    10000
 
 extern struct sock *rekernel_netlink;
 extern int rekernel_netlink_unit;
