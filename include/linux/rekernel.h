@@ -15,6 +15,12 @@
 #define REKERNEL_MAX_SYSTEM_UID     2000
 #define REKERNEL_MIN_USERAPP_UID    10000
 
+/*
+ * Binder async warning threshold
+ */
+#define REKERNEL_RESERVE_ORDER      17
+#define REKERNEL_WARN_AHEAD_SPACE   (1 << REKERNEL_RESERVE_ORDER)
+
 extern struct sock *rekernel_netlink;
 extern int rekernel_netlink_unit;
 

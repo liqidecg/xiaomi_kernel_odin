@@ -18,6 +18,7 @@
 #include <linux/rekernel.h>
 #include <linux/slab.h>
 #include <linux/sched.h>
+#include <linux/uidgid.h>
 #include <linux/list_lru.h>
 #include <linux/ratelimit.h>
 #include <asm/cacheflush.h>
@@ -402,7 +403,7 @@ static bool debug_low_async_space_locked(struct binder_alloc *alloc, int pid)
 
 static inline bool line_is_frozen(struct task_struct *task)
 {
-	return frozen(task) || freezing(task);
+	return false;
 }
 
 static int send_netlink_message(char *msg, uint16_t len) {
@@ -498,7 +499,12 @@ struct binder_buffer *binder_alloc_new_buf_locked(
 		if (proc_task != NULL && start_rekernel_server() == 0) {
 			if (line_is_frozen(proc_task)) {
      			char binder_kmsg[REKERNEL_PACKET_SIZE];
-                snprintf(binder_kmsg, sizeof(binder_kmsg), "type=Binder,bindertype=free_buffer_full,oneway=1,from_pid=%d,from=%d,target_pid=%d,target=%d;", current->pid, task_uid(current).val, proc_task->pid, task_uid(proc_task).val);
+                snprintf(binder_kmsg, sizeof(binder_kmsg),
+	"type=Binder,bindertype=free_buffer_full,oneway=1,from_pid=%d,from=%u,target_pid=%d,target=%u;",
+	current->pid,
+	__kuid_val(task_uid(current)),
+	proc_task->pid,
+	__kuid_val(task_uid(proc_task)));
          		send_netlink_message(binder_kmsg, strlen(binder_kmsg));
 			}
 		}
