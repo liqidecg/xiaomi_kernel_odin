@@ -1,1 +1,1 @@
-../../../drivers/pinctrl/core.h
+#include "../../../drivers/pinctrl/core.h"
